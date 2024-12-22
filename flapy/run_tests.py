@@ -20,6 +20,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tomllib
 from enum import Enum
 from pathlib import Path
 from typing import (
@@ -296,11 +297,21 @@ class PyTestRunner:
                     # packages = self.find_dependencies()
                     # env.add_packages_for_installation(packages)
 
-                    reqs_files = self.find_requirements_files()
-                    self._logger.info(
-                        f"found the following requirements files: {[str(reqs_file) for reqs_file in reqs_files]}"
-                    )
-                    env.add_requirements_files_for_installation(reqs_files)
+                    self._logger.info("Found pyproject files: " + list(self._path.glob("pyproject.toml")).__str__())
+
+                    if list(self._path.glob("pyproject.toml")):
+                        self._logger.info("Add requirements from pyproject or lock files")
+                        # Add requirements from pyproject or lock files
+                        env.add_package_for_installation("coverage[toml]") # Required with toml files present
+                        env.add_packages_for_installation(self.get_requirements_from_pyproject_file())
+                    else:
+                        # Get requirements from requirements.txt files
+                        reqs_files = self.find_requirements_files()
+                        self._logger.info(
+                            f"found the following requirements files: {[str(reqs_file) for reqs_file in reqs_files]}"
+                        )
+                        env.add_requirements_files_for_installation(reqs_files)
+
                 else:
                     self._logger.info(f"pypi tag found {self._config.pypi_tag}")
                     env.add_package_for_installation(f"{self._project_name}=={self._config.pypi_tag}")
@@ -372,6 +383,64 @@ class PyTestRunner:
                 return out, err
             finally:
                 os.chdir(old_cwd)
+
+    def add_requirements_from_lock_file(self, lockfile_name: str) -> List[str]:
+        packages = []
+        with open(lockfile_name, "rb") as f:
+            data = tomllib.load(f)
+
+        for package in data["package"]:
+            packages.append(f"{package['name']}=={package['version']}")
+            #print(package["name"], package["version"])
+
+        return packages
+
+    def get_lock_file_names(self) -> List[str]:
+        lock_files = []
+        lockfile_names = ["poetry.lock", "pdm.lock"]
+
+        for lockfile_name in lockfile_names:
+            lock_files += list(self._path.glob(lockfile_name))
+
+        return lock_files
+
+
+
+
+    def get_requirements_from_pyproject_file(self) -> list[str]:
+        # Todo: poetry support
+        possible_pyproject_files = list(self._path.glob("pyproject.toml"))
+        requirements = []
+        if os.path.isfile(possible_pyproject_files[0]):
+            """
+            Check first if a lock file exists, otherwise get requirements directly from pyproject.toml
+            """
+            lock_files =  self.get_lock_file_names()
+            if lock_files:
+                print("Lock file/s found, adding dependencies")
+                # Lockfile/s found, not searching through toml
+                for file in lock_files:
+                    try:
+                        requirements += self.get_requirements_from_lock_file(file)
+                        print(f"Added requirements from lock file {file}")
+                    except Exception as e:
+                        print(f"Error getting requirements from lock file: {file}")
+            else:
+                # Read requirements from pyproject file
+                for possible_pyproject_file in possible_pyproject_files:
+                    try:
+                        with open(possible_pyproject_file, "rb") as f:
+                            data = tomllib.load(f)
+
+                        for dependency in data["project"]["dependencies"]:
+                            requirements.append(dependency)
+                        print(f"Addedg requirements from pyproject file: {possible_pyproject_file}")
+
+                    except Exception as e:
+                        print(f"Error getting requirements from pyproject file: {possible_pyproject_file}")
+
+
+        return requirements
 
     def find_requirements_files(self) -> List[Path]:
         """Search for *requirements*.txt files in the project path
