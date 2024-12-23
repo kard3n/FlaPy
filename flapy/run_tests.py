@@ -39,6 +39,8 @@ from typing import (
 import pipfile  # type: ignore
 import virtualenv as virtenv  # type: ignore
 
+from test_file import strip_version
+
 
 class FileUtils:
     """Provides static file utility methods."""
@@ -268,6 +270,7 @@ class PyTestRunner:
         trace_output_file: Path = None,
         sqlite_coverage_file: Union[str, os.PathLike] = None,
         tests_to_be_run: str = "",
+        ignore_pyproject_version_restrictions: bool = False,
     ) -> None:
         self._project_name = project_name
         self._path = Path(path)
@@ -278,6 +281,7 @@ class PyTestRunner:
         self._sqlite_coverage_file = sqlite_coverage_file
         self._tests_to_be_run = tests_to_be_run
         self._logger = logger
+        self._ignore_pyproject_version_restrictions = ignore_pyproject_version_restrictions
 
     def run(self) -> Optional[Tuple[str, str]]:
         """Install dependencies and execute pytest"""
@@ -384,13 +388,16 @@ class PyTestRunner:
             finally:
                 os.chdir(old_cwd)
 
-    def add_requirements_from_lock_file(self, lockfile_name: str) -> List[str]:
+    def get_requirements_from_lock_file(self, lockfile_name: str) -> List[str]:
         packages = []
         with open(lockfile_name, "rb") as f:
             data = tomli.load(f)
 
         for package in data["package"]:
-            packages.append(f"{package['name']}=={package['version']}")
+            if self._ignore_pyproject_version_restrictions:
+                packages.append(package['name'])
+            else:
+                packages.append(f"{package['name']}=={package['version']}")
             #print(package["name"], package["version"])
 
         return packages
@@ -404,8 +411,8 @@ class PyTestRunner:
 
         return lock_files
 
-
-
+    def strip_version(self, full_string: str) -> str:
+        return full_string.split("=")[0].rstrip(">").rstrip("<")
 
     def get_requirements_from_pyproject_file(self) -> list[str]:
         # Todo: poetry support
@@ -417,8 +424,8 @@ class PyTestRunner:
             """
             lock_files =  self.get_lock_file_names()
             if lock_files:
-                self._logger.info("Lock file/s found, adding dependencies")
                 # Lockfile/s found, not searching through toml
+                self._logger.info("Lock file/s found, adding dependencies")
                 for file in lock_files:
                     try:
                         requirements += self.get_requirements_from_lock_file(file)
@@ -434,12 +441,18 @@ class PyTestRunner:
 
                         if  "dependencies" in data["project"].keys():
                             for dependency in data["project"]["dependencies"]:
-                                requirements.append(f'"{dependency}"')
+                                if self._ignore_pyproject_version_restrictions:
+                                    requirements.append(strip_version(dependency))
+                                else:
+                                    requirements.append(f'"{dependency}"')
 
                         if "optional-dependencies" in data["project"].keys():
                             for dependency_group in data["project"]["optional-dependencies"].values():
                                 for dependency in dependency_group:
-                                    requirements.append(f'"{dependency}"')
+                                    if self._ignore_pyproject_version_restrictions:
+                                        requirements.append(strip_version(dependency))
+                                    else:
+                                        requirements.append(f'"{dependency}"')
 
                         self._logger.info(f"Added requirements from pyproject file: {possible_pyproject_file}")
 
