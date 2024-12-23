@@ -20,7 +20,7 @@ import os
 import shutil
 import subprocess
 import sys
-import tomllib
+import tomli
 from enum import Enum
 from pathlib import Path
 from typing import (
@@ -387,7 +387,7 @@ class PyTestRunner:
     def add_requirements_from_lock_file(self, lockfile_name: str) -> List[str]:
         packages = []
         with open(lockfile_name, "rb") as f:
-            data = tomllib.load(f)
+            data = tomli.load(f)
 
         for package in data["package"]:
             packages.append(f"{package['name']}=={package['version']}")
@@ -430,11 +430,18 @@ class PyTestRunner:
                 for possible_pyproject_file in possible_pyproject_files:
                     try:
                         with open(possible_pyproject_file, "rb") as f:
-                            data = tomllib.load(f)
+                            data = tomli.load(f)
 
-                        for dependency in data["project"]["dependencies"]:
-                            requirements.append(dependency)
-                        print(f"Addedg requirements from pyproject file: {possible_pyproject_file}")
+                        if  "dependencies" in data["project"].keys():
+                            for dependency in data["project"]["dependencies"]:
+                                requirements.append(dependency)
+
+                        if "optional-dependencies" in data["project"].keys():
+                            for dependency_group in data["project"]["optional-dependencies"]:
+                                for dependency in dependency_group:
+                                    requirements.append(dependency)
+
+                        print(f"Added requirements from pyproject file: {possible_pyproject_file}")
 
                     except Exception as e:
                         print(f"Error getting requirements from pyproject file: {possible_pyproject_file}")
