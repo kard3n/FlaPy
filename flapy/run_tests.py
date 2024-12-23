@@ -417,14 +417,14 @@ class PyTestRunner:
             """
             lock_files =  self.get_lock_file_names()
             if lock_files:
-                print("Lock file/s found, adding dependencies")
+                self._logger.info("Lock file/s found, adding dependencies")
                 # Lockfile/s found, not searching through toml
                 for file in lock_files:
                     try:
                         requirements += self.get_requirements_from_lock_file(file)
-                        print(f"Added requirements from lock file {file}")
+                        self._logger.info(f"Added requirements from lock file {file}")
                     except Exception as e:
-                        print(f"Error getting requirements from lock file: {file}")
+                        self._logger.info(f"Error getting requirements from lock file: {file}")
             else:
                 # Read requirements from pyproject file
                 for possible_pyproject_file in possible_pyproject_files:
@@ -434,17 +434,17 @@ class PyTestRunner:
 
                         if  "dependencies" in data["project"].keys():
                             for dependency in data["project"]["dependencies"]:
-                                requirements.append(dependency)
+                                requirements.append(f'"{dependency}"')
 
                         if "optional-dependencies" in data["project"].keys():
-                            for dependency_group in data["project"]["optional-dependencies"]:
+                            for dependency_group in data["project"]["optional-dependencies"].values():
                                 for dependency in dependency_group:
-                                    requirements.append(dependency)
+                                    requirements.append(f'"{dependency}"')
 
-                        print(f"Added requirements from pyproject file: {possible_pyproject_file}")
+                        self._logger.info(f"Added requirements from pyproject file: {possible_pyproject_file}")
 
                     except Exception as e:
-                        print(f"Error getting requirements from pyproject file: {possible_pyproject_file}")
+                        self._logger.info(f"Error getting requirements from pyproject file: {possible_pyproject_file}")
 
 
         return requirements
