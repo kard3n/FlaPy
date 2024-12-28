@@ -440,7 +440,7 @@ class PyTestRunner:
         try:
             with open(pyproject_file, "rb") as f:
                 data = tomli.load(f)
-            return "dependencies" in data["project"].keys() or "optional-dependencies" in data["project"].keys()
+            return "dependencies" in data["project"].keys() or "optional-dependencies" in data["project"].keys() or ("tool" in data.keys() and "poetry" in data["tool"])
         except:
             return False
 
