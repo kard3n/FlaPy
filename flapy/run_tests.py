@@ -199,7 +199,7 @@ class VirtualEnvironment:
         ]
         # Install dependencies
         for reqs_file in self._requirements_files:
-            command_list.append(f"pip install -r {reqs_file}")
+            command_list.append(f"pip install -r --force-reinstall {reqs_file}")
         if self._packages:
             # --ignore-installed allows overwriting existing packages. Not elegant, but fixes dependency conflicts
             command_list.append(
