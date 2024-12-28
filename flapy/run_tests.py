@@ -39,8 +39,6 @@ from typing import (
 import pipfile  # type: ignore
 import virtualenv as virtenv  # type: ignore
 
-from test_file import strip_version
-
 
 class FileUtils:
     """Provides static file utility methods."""
@@ -200,8 +198,11 @@ class VirtualEnvironment:
         # Install dependencies
         for reqs_file in self._requirements_files:
             command_list.append(f"pip install -r {reqs_file}")
-        for package in self._packages:
-            command_list.append(f"pip install {package}")
+        if self._packages:
+            command_list.append(
+                f"pip install {' '.join(package for package in self._packages)}"
+            )
+
         # Append other commands
         command_list.extend(commands)
         # Log commands
@@ -270,7 +271,6 @@ class PyTestRunner:
         trace_output_file: Path = None,
         sqlite_coverage_file: Union[str, os.PathLike] = None,
         tests_to_be_run: str = "",
-        ignore_pyproject_version_restrictions: bool = False,
     ) -> None:
         self._project_name = project_name
         self._path = Path(path)
@@ -281,12 +281,13 @@ class PyTestRunner:
         self._sqlite_coverage_file = sqlite_coverage_file
         self._tests_to_be_run = tests_to_be_run
         self._logger = logger
-        self._ignore_pyproject_version_restrictions = ignore_pyproject_version_restrictions
 
     def run(self) -> Optional[Tuple[str, str]]:
         """Install dependencies and execute pytest"""
 
-        with virtualenv(env_name=self._project_name, logger=self._logger, root_dir=self._config.temp) as env:
+        with virtualenv(
+            env_name=self._project_name, logger=self._logger, root_dir=self._config.temp
+        ) as env:
             old_cwd = Path(os.getcwd())
             os.chdir(self._path)
             try:
@@ -301,13 +302,20 @@ class PyTestRunner:
                     # packages = self.find_dependencies()
                     # env.add_packages_for_installation(packages)
 
-                    self._logger.info("Found pyproject files: " + list(self._path.glob("pyproject.toml")).__str__())
+                    self._logger.info(
+                        "Found pyproject files: "
+                        + list(self._path.glob("pyproject.toml")).__str__()
+                    )
 
                     if list(self._path.glob("pyproject.toml")):
                         self._logger.info("Add requirements from pyproject or lock files")
                         # Add requirements from pyproject or lock files
-                        env.add_package_for_installation("coverage[toml]") # Required with toml files present
-                        env.add_packages_for_installation(self.get_requirements_from_pyproject_file())
+                        env.add_package_for_installation(
+                            "coverage[toml]"
+                        )  # Required with toml files present
+                        env.add_packages_for_installation(
+                            self.get_requirements_from_pyproject_file()
+                        )
                     else:
                         # Get requirements from requirements.txt files
                         reqs_files = self.find_requirements_files()
@@ -318,7 +326,9 @@ class PyTestRunner:
 
                 else:
                     self._logger.info(f"pypi tag found {self._config.pypi_tag}")
-                    env.add_package_for_installation(f"{self._project_name}=={self._config.pypi_tag}")
+                    env.add_package_for_installation(
+                        f"{self._project_name}=={self._config.pypi_tag}"
+                    )
 
                 # INSTALL TEST EXECUTION DEPENDENCIES
                 env.add_package_for_installation("pytest==6.2.5")
@@ -394,11 +404,8 @@ class PyTestRunner:
             data = tomli.load(f)
 
         for package in data["package"]:
-            if self._ignore_pyproject_version_restrictions:
-                packages.append(package['name'])
-            else:
-                packages.append(f"{package['name']}=={package['version']}")
-            #print(package["name"], package["version"])
+            packages.append(f"{package['name']}=={package['version']}")
+            # print(package["name"], package["version"])
 
         return packages
 
@@ -422,7 +429,7 @@ class PyTestRunner:
             """
             Check first if a lock file exists, otherwise get requirements directly from pyproject.toml
             """
-            lock_files =  self.get_lock_file_names()
+            lock_files = self.get_lock_file_names()
             if lock_files:
                 # Lockfile/s found, not searching through toml
                 self._logger.info("Lock file/s found, adding dependencies")
@@ -439,26 +446,25 @@ class PyTestRunner:
                         with open(possible_pyproject_file, "rb") as f:
                             data = tomli.load(f)
 
-                        if  "dependencies" in data["project"].keys():
+                        if "dependencies" in data["project"].keys():
                             for dependency in data["project"]["dependencies"]:
-                                if self._ignore_pyproject_version_restrictions:
-                                    requirements.append(strip_version(dependency))
-                                else:
-                                    requirements.append(f'"{dependency}"')
+                                requirements.append(f'"{dependency.split(";")[0]}"')
 
                         if "optional-dependencies" in data["project"].keys():
-                            for dependency_group in data["project"]["optional-dependencies"].values():
+                            for dependency_group in data["project"][
+                                "optional-dependencies"
+                            ].values():
                                 for dependency in dependency_group:
-                                    if self._ignore_pyproject_version_restrictions:
-                                        requirements.append(strip_version(dependency))
-                                    else:
-                                        requirements.append(f'"{dependency}"')
+                                    requirements.append(f'"{dependency.split(";")[0]}"')
 
-                        self._logger.info(f"Added requirements from pyproject file: {possible_pyproject_file}")
+                        self._logger.info(
+                            f"Added requirements from pyproject file: {possible_pyproject_file}"
+                        )
 
                     except Exception as e:
-                        self._logger.info(f"Error getting requirements from pyproject file: {possible_pyproject_file}")
-
+                        self._logger.info(
+                            f"Error getting requirements from pyproject file: {possible_pyproject_file}"
+                        )
 
         return requirements
 
@@ -641,8 +647,8 @@ class FlakyAnalyser:
             type=RandomOrderBucket,
             choices=list(RandomOrderBucket),
             help="Select the strategy for buckets on random-order test execution.  "
-                 "The default value is `module'.  See the documentation of the "
-                 "`pytest-random-order' plugin for details on these values.",
+            "The default value is `module'.  See the documentation of the "
+            "`pytest-random-order' plugin for details on these values.",
         )
         parser.add_argument(
             "-s",
@@ -659,9 +665,9 @@ class FlakyAnalyser:
             required=False,
             type=str,
             help="NodeIDs of the functions that shall be traced. "
-                 'Example: "tests/test_file.py::test_func1 test_file.py::TestClass::test_func2 '
-                 "Note: Only the name of the file (test_file.py) will be used, "
-                 "the rest of the path (tests/) is discarded",
+            'Example: "tests/test_file.py::test_func1 test_file.py::TestClass::test_func2 '
+            "Note: Only the name of the file (test_file.py) will be used, "
+            "the rest of the path (tests/) is discarded",
         )
         parser.add_argument(
             "--tests-to-be-run",
@@ -670,9 +676,9 @@ class FlakyAnalyser:
             type=str,
             default="",
             help="NodeIDs of the functions that shall be executed. "
-                 "Multiple names must be separated by spaces and "
-                 "will be executed each individually in a new pytest run. "
-                 'Example: "tests/test_file.py::test_func1 tests/test_file.py::TestClass::test_func2',
+            "Multiple names must be separated by spaces and "
+            "will be executed each individually in a new pytest run. "
+            'Example: "tests/test_file.py::test_func1 tests/test_file.py::TestClass::test_func2',
         )
         parser.add_argument(
             "--collect-sqlite-coverage-database",
