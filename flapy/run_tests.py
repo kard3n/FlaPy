@@ -20,6 +20,8 @@ import os
 import shutil
 import subprocess
 import sys
+import traceback
+
 import tomli
 from enum import Enum
 from pathlib import Path
@@ -199,8 +201,9 @@ class VirtualEnvironment:
         for reqs_file in self._requirements_files:
             command_list.append(f"pip install -r {reqs_file}")
         if self._packages:
+            # --ignore-installed allows overwriting existing packages. Not elegant, but fixes dependency conflicts
             command_list.append(
-                f"pip install {' '.join(package for package in self._packages)}"
+                f"pip install --force-reinstall {' '.join(package for package in self._packages)}"
             )
 
         # Append other commands
@@ -307,7 +310,9 @@ class PyTestRunner:
                         + list(self._path.glob("pyproject.toml")).__str__()
                     )
 
-                    if list(self._path.glob("pyproject.toml")):
+                    possible_pyproject_files = list(self._path.glob("pyproject.toml"))
+
+                    if self.pyproject_file_has_dependencies(possible_pyproject_files[0]):
                         self._logger.info("Add requirements from pyproject or lock files")
                         # Add requirements from pyproject or lock files
                         env.add_package_for_installation(
@@ -421,6 +426,22 @@ class PyTestRunner:
     def strip_version(self, full_string: str) -> str:
         return full_string.split("=")[0].rstrip(">").rstrip("<")
 
+    def pyproject_file_has_dependencies(self, pyproject_file: str) -> bool:
+        """
+
+        Args:
+            pyproject_files:
+
+        Returns: true when the pyproject file has dependencies
+
+        """
+        try:
+            with open(pyproject_file, "rb") as f:
+                data = tomli.load(f)
+            return "dependencies" in data["project"].keys() or "optional-dependencies" in data["project"].keys()
+        except:
+            return False
+
     def get_requirements_from_pyproject_file(self) -> list[str]:
         # Todo: poetry support
         possible_pyproject_files = list(self._path.glob("pyproject.toml"))
@@ -439,6 +460,7 @@ class PyTestRunner:
                         self._logger.info(f"Added requirements from lock file {file}")
                     except Exception as e:
                         self._logger.info(f"Error getting requirements from lock file: {file}")
+                        self._logger.info(traceback.format_exception(e))
             else:
                 # Read requirements from pyproject file
                 for possible_pyproject_file in possible_pyproject_files:
