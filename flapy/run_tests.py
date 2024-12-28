@@ -317,7 +317,7 @@ class PyTestRunner:
                             "coverage[toml]"
                         )  # Required with toml files present
 
-                    if self.pyproject_file_has_dependencies(possible_pyproject_files[0]):
+                    if possible_pyproject_files and self.pyproject_file_has_dependencies(possible_pyproject_files[0]):
                         self._logger.info("Add requirements from pyproject or lock files")
                         # Add requirements from pyproject or lock files
                         env.add_packages_for_installation(
