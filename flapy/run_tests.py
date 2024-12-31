@@ -259,7 +259,6 @@ class RandomOrderBucket(Enum):
     def __str__(self):
         return str(self.value)
 
-
 class PyTestRunner:
 
     # pylint: disable=too-many-arguments
@@ -287,6 +286,7 @@ class PyTestRunner:
 
     def run(self) -> Optional[Tuple[str, str]]:
         """Install dependencies and execute pytest"""
+        self._logger.info(f"Ignoring dependencies: {self._config.ignore_dependency_versions}")
 
         with virtualenv(
             env_name=self._project_name, logger=self._logger, root_dir=self._config.temp
@@ -411,7 +411,10 @@ class PyTestRunner:
             data = tomli.load(f)
 
         for package in data["package"]:
-            packages.append(f"{package['name']}=={package['version']}")
+            if not self._config.ignore_dependency_versions:
+                packages.append(f"{package['name']}=={package['version']}")
+            else:
+                packages.append(package['name'])
             # print(package["name"], package["version"])
 
         return packages
@@ -472,14 +475,20 @@ class PyTestRunner:
 
                         if "dependencies" in data["project"].keys():
                             for dependency in data["project"]["dependencies"]:
-                                requirements.append(f'"{dependency.split(";")[0]}"')
+                                if not self._config.ignore_dependency_versions:
+                                    requirements.append(f'"{dependency.split(";")[0]}"')
+                                else:
+                                    requirements.append(f'"{dependency.split("=")[0].split("<")[0].split(">")[0]}"')
 
                         if "optional-dependencies" in data["project"].keys():
                             for dependency_group in data["project"][
                                 "optional-dependencies"
                             ].values():
                                 for dependency in dependency_group:
-                                    requirements.append(f'"{dependency.split(";")[0]}"')
+                                    if not self._config.ignore_dependency_versions:
+                                        requirements.append(f'"{dependency.split(";")[0]}"')
+                                    else:
+                                        requirements.append(f'"{dependency.split("=")[0].split("<")[0].split(">")[0]}"')
 
                         self._logger.info(
                             f"Added requirements from pyproject file: {possible_pyproject_file}"
@@ -703,6 +712,15 @@ class FlakyAnalyser:
             "Multiple names must be separated by spaces and "
             "will be executed each individually in a new pytest run. "
             'Example: "tests/test_file.py::test_func1 tests/test_file.py::TestClass::test_func2',
+        )
+        # Todo: apply to requirement.txt files too
+        parser.add_argument(
+            "--ignore-dependency-versions",
+            dest="ignore_dependency_versions",
+            required=False,
+            type=bool,
+            default=True,
+            help="When set to True, dependencies versions from pyproject or lock files are ignored."
         )
         parser.add_argument(
             "--collect-sqlite-coverage-database",
